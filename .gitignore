@@ -11,3 +11,6 @@ results/runs/
 # large captures; keep only the small generated sample clip
 *.mp4
 !samples/sample.mp4
+
+# remembered peer IP for start.sh
+.peer_ip
