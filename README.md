@@ -243,30 +243,37 @@ tab.
 ### Results on this machine (tc netem on loopback)
 
 Each cell covers 12 s, about 240 frames of a 640×360 clip at 20 fps.
-Fixed FEC used `r = 5`.
+Fixed FEC used `r = 5`. Adaptive FEC used the default 6000 kbit/s budget.
 
 | Injected loss | Frames recovered (No / Fixed / **Adaptive**) | Mean PSNR, dB (No / Fixed / **Adaptive**) | FEC overhead (Fixed / **Adaptive**) |
 |---:|:---:|:---:|:---:|
-| 0%  | 100 / 100 / **100** % | 39.9 / 39.9 / **39.9** | 17 / **14** % |
-| 5%  | 23.7 / 98.7 / **100** % | 21.8 / 39.6 / **39.9** | 17 / **27** % |
-| 10% | 4.3 / 87.2 / **100** % | 16.1 / 36.8 / **39.9** | 17 / **40** % |
-| 15% | 0 / 55.8 / **100** % | 14.2 / 28.8 / **39.9** | 17 / **51** % |
-| 20% | 0 / 25.4 / **100** % | 13.6 / 20.5 / **39.9** | 17 / **64** % |
-| 25% | 0 / 12.0 / **100** % | 13.0 / 16.9 / **39.9** | 17 / **82** % |
-| 30% | 0 / 3.8 / **100** % | 12.9 / 14.1 / **39.9** | 17 / **95** % |
+| 0%  | 100 / 100 / **100** % | 39.9 / 39.9 / **37.7** | 17 / **17** % |
+| 5%  | 27.5 / 99.6 / **100** % | 23.1 / 39.8 / **37.2** | 17 / **30** % |
+| 10% | 5.5 / 86.6 / **99.6** % | 16.8 / 36.7 / **36.1** | 17 / **44** % |
+| 15% | 0.9 / 59.1 / **99.6** % | 14.2 / 29.9 / **35.2** | 17 / **65** % |
+| 20% | 0 / 28.1 / **100** % | 13.3 / 21.3 / **34.7** | 17 / **80** % |
+| 25% | 0 / 10.7 / **100** % | 13.2 / 16.1 / **34.0** | 17 / **101** % |
+| 30% | 0 / 2.2 / **99.6** % | 13.1 / 13.5 / **33.9** | 17 / **119** % |
 
 What the results show:
 
 * **No FEC** falls apart almost immediately. A frame is about 29 packets, so
   even at 5% loss only about 0.95²⁹ ≈ 23% of frames arrive whole.
 * **Fixed FEC** works at low loss but has a hard ceiling. Once loss passes
-  what 5 parity packets can cover, recovery falls quickly.
-* **Adaptive FEC** recovered every frame at every level. It spends parity
-  only as loss demands it. On a clean link it uses slightly less than fixed
-  FEC; at 30% loss it uses about 95% overhead. Overhead has to grow faster
-  than loss, because parity covers `r / (k + r)` of the packets, not `r / k`,
-  and because extra margin is needed for the random variation in how many
+  what 5 parity packets can cover, recovery falls quickly. At low loss it
+  gives the sharpest picture, because it spends nothing extra.
+* **Adaptive FEC** recovered 99.6–100% of frames at every level, without
+  ever exceeding its bitrate budget. As loss rises, it shifts the budget from
+  picture detail to parity: JPEG quality falls, so PSNR declines gently from
+  37.7 to 33.9 dB instead of collapsing to 13 dB. The cap costs about 2 dB on
+  a clean link compared with fixed FEC. Overhead has to grow faster than
+  loss, because parity covers `r / (k + r)` of the packets, not `r / k`, and
+  because extra margin is needed for the random variation in how many
   packets each frame loses.
+* **Two laptops over a phone hotspot.** Screenshots are in
+  `docs/screenshots/two_laptops_*`. With 10% loss injected on the link,
+  adaptive FEC rebuilt 90% of frames and showed 100% intact, at 36.4 dB. At
+  25% it rebuilt every frame, again 100% intact, at 34.3 dB.
 * **Reaction time.** The trace shows a short recovery dip, about half a
   second, each time loss steps up abruptly. That is the time for the loss
   report to travel back and for the smoothed estimate to rise. When loss

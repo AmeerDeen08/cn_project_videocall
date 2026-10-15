@@ -342,17 +342,18 @@ function renderResults(summary) {
   // Headlines at the 20% point (or the closest level).
   const ref = levels.reduce((a, b) => Math.abs(b - 20) < Math.abs(a - 20) ? b : a);
   const off = rowFor(summary, ref, "off"), fix = rowFor(summary, ref, "fixed"), ada = rowFor(summary, ref, "adaptive");
-  const clean = rowFor(summary, levels[0], "adaptive"), cleanFix = rowFor(summary, levels[0], "fixed");
+  const worst = levels[levels.length - 1];
+  const wOff = rowFor(summary, worst, "off"), wFix = rowFor(summary, worst, "fixed"), wAda = rowFor(summary, worst, "adaptive");
   const heads = [
     { label: `Frames recovered at ${ref}% loss`,
-      value: `${fmt(ada.recovery_pct, 0)}%`,
-      hint: `Adaptive FEC, versus ${fmt(fix.recovery_pct, 0)}% fixed and ${fmt(off.recovery_pct, 0)}% without FEC.` },
+      value: `${fmt(ada.recovery_pct, 1).replace(".0", "")}%`,
+      hint: `Adaptive FEC, versus ${fmt(fix.recovery_pct, 1).replace(".0", "")}% fixed and ${fmt(off.recovery_pct, 1).replace(".0", "")}% without FEC.` },
     { label: `Picture quality at ${ref}% loss`,
       value: `${fmt(ada.psnr, 1)} dB`,
       hint: `Adaptive FEC, versus ${fmt(fix.psnr, 1)} dB fixed and ${fmt(off.psnr, 1)} dB without FEC.` },
-    { label: `Overhead on a clean link`,
-      value: `${fmt(clean.overhead_pct, 0)}%`,
-      hint: `Adaptive backs off when loss is low; fixed always pays ${fmt(cleanFix.overhead_pct, 0)}%.` },
+    { label: `Worst case: ${worst}% loss`,
+      value: `${fmt(wAda.recovery_pct, 1).replace(".0", "")}% recovered`,
+      hint: `Adaptive FEC within its bitrate cap, versus ${fmt(wFix.recovery_pct, 1).replace(".0", "")}% fixed and ${fmt(wOff.recovery_pct, 1).replace(".0", "")}% without FEC.` },
   ];
   $("#results-headlines").innerHTML = heads.map((h) =>
     `<div class="headline"><div class="label">${h.label}</div><div class="value">${h.value}</div><div class="hint">${h.hint}</div></div>`
@@ -382,7 +383,7 @@ function renderResults(summary) {
 
   // Table: loss | recovered ×3 | PSNR ×3 | SSIM ×3 | overhead ×3
   const groups = [
-    { key: "recovery_pct", label: "Frames recovered (%)", digits: 0, best: "max" },
+    { key: "recovery_pct", label: "Frames recovered (%)", digits: 1, best: "max" },
     { key: "psnr", label: "PSNR (dB)", digits: 1, best: "max" },
     { key: "ssim", label: "SSIM", digits: 3, best: "max" },
     { key: "overhead_pct", label: "FEC overhead (%)", digits: 0, best: null },

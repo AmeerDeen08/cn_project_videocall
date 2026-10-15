@@ -45,6 +45,8 @@ def parse_args():
     p.add_argument("--fixed-redundancy", type=int, default=5)
     p.add_argument("--impair", choices=["auto", "netem", "sim"], default="auto")
     p.add_argument("--iface", default="lo")
+    p.add_argument("--base-port", type=int, default=5000,
+                   help="peer A uses this port, peer B port + 1000 (each +1 for control)")
     p.add_argument("--source", default=os.path.join(HERE, "samples", "sample.mp4"))
     p.add_argument("--out", default=os.path.join(HERE, "results"))
     p.add_argument("--no-trace", action="store_true",
@@ -64,8 +66,9 @@ class Impairment:
 
     def set(self, loss):
         if self.kind == "netem":
+            ports = f"{PORT_A},{PORT_A + 1},{PORT_B},{PORT_B + 1}"
             subprocess.run(["sudo", "-n", self.script, "add", self.iface,
-                            "--loss", str(loss)], check=True,
+                            "--loss", str(loss), "--ports", ports], check=True,
                            stdout=subprocess.DEVNULL)
 
     def clear(self):
@@ -365,7 +368,9 @@ def print_table(rows, levels):
 
 
 def main():
+    global PORT_A, PORT_B
     args = parse_args()
+    PORT_A, PORT_B = args.base_port, args.base_port + 1000
     levels = [float(x) if "." in x else int(x) for x in args.levels.split(",")]
     out = args.out
     runs_dir = os.path.join(out, "runs")
