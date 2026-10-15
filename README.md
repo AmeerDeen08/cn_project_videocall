@@ -1,5 +1,9 @@
 # Unbreakable call: adaptive FEC video calling over UDP
 
+> The project report, with the objective, steps, results and screenshot
+> index, is in [PROJECT_REPORT.md](PROJECT_REPORT.md). The two-laptop demo
+> runbook is in [DEMO.md](DEMO.md).
+
 A video-calling app that keeps working under heavy packet loss. Each frame is
 sent with **forward error correction** (FEC): extra parity packets let the
 receiver rebuild lost data without asking for a retransmission. The amount of
