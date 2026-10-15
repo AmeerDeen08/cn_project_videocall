@@ -104,6 +104,8 @@ class Peer:
         self.ctrl = self._socket(args.listen_port + 1)
         self.peer_media = (args.peer_ip, args.peer_port)
         self.peer_ctrl = (args.peer_ip, args.peer_port + 1)
+        self.last_from_peer = 0.0        # last media packet from the peer
+        self.local_ip = _local_ip(args.peer_ip)
 
         self.source = None
         clip = None
@@ -263,7 +265,7 @@ class Peer:
 
         while not self.stop.is_set():
             try:
-                data, _ = self.media.recvfrom(65536)
+                data, src_addr = self.media.recvfrom(65536)
             except (socket.timeout, BlockingIOError):
                 data = None
             except OSError:
@@ -272,6 +274,7 @@ class Peer:
             if data:
                 parsed = packet.unpack_media(data)
                 if parsed:
+                    self._note_source(src_addr)
                     h, payload = parsed
                     fid = h.frame_id
                     if last_final is not None and (fid < last_final - 1000
@@ -309,6 +312,22 @@ class Peer:
                     finalise(fid, pending.pop(fid))
                 else:
                     break
+
+    def _note_source(self, addr):
+        """Follow the peer if its video arrives from an unexpected address.
+
+        A typo'd or stale --peer-ip on one side would otherwise give a one-way
+        call; once we hear from the peer we know exactly where to send.
+        """
+        now = time.time()
+        if addr == self.peer_media:
+            self.last_from_peer = now
+        elif now - self.last_from_peer > 3.0:
+            self.log(f"receiving video from {addr[0]}:{addr[1]} but --peer-ip is "
+                     f"{self.peer_media[0]}:{self.peer_media[1]}; sending there instead")
+            self.peer_media = addr
+            self.peer_ctrl = (addr[0], addr[1] + 1)
+            self.last_from_peer = now
 
     def _show(self, image, jpeg):
         with self.lock:
@@ -381,7 +400,7 @@ class Peer:
             "config": {
                 "name": self.args.name, "fec": self.args.fec,
                 "listen": f"{self.args.listen_ip}:{self.args.listen_port}",
-                "peer": f"{self.args.peer_ip}:{self.args.peer_port}",
+                "peer": f"{self.peer_media[0]}:{self.peer_media[1]}",
                 "fixed_redundancy": self.args.fixed_redundancy,
                 "source": self.args.mode, "backend": fec.BACKEND,
             },
@@ -435,7 +454,9 @@ class Peer:
     def status_line(self):
         s = self.metrics.stats()
         c = self.controller
-        rx = ("rx: waiting for video" if not s["active"] else
+        idle = (f"rx: nothing from {self.peer_media[0]} yet -- the other laptop must "
+                f"send to {self.local_ip}:{self.args.listen_port}")
+        rx = (idle if not s["active"] else
               f"rx[{s['mode']}]: loss {s['loss_pct']:.1f}%  r={s['r']}/k={s['k']}  "
               f"recovered {s['recovery_pct']:.0f}%  "
               + (f"PSNR {s['psnr']:.1f} dB  SSIM {s['ssim']:.3f}  " if s["psnr"] else "")
@@ -459,7 +480,7 @@ class Peer:
             self.log(f"dashboard: http://{self.args.dashboard_host}:"
                      f"{self.args.dashboard_port}")
         if not self.args.quiet:
-            self.log(f"listening on {self.args.listen_ip}:{self.args.listen_port} "
+            self.log(f"listening on {self.local_ip}:{self.args.listen_port} "
                      f"(control {self.args.listen_port + 1}), sending to "
                      f"{self.args.peer_ip}:{self.args.peer_port}, fec={self.args.fec}, "
                      f"backend={fec.BACKEND}")
@@ -503,6 +524,18 @@ class Peer:
                 self.log(f"send loop stopped: {e}")
                 self.stop.set()
         return wrapped
+
+
+def _local_ip(peer_ip):
+    """The address of the interface used to reach the peer."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect((peer_ip, 9))          # UDP connect sends nothing
+        return s.getsockname()[0]
+    except OSError:
+        return "this machine's IP"
+    finally:
+        s.close()
 
 
 def _interrupt(*_):
