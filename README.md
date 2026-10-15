@@ -183,7 +183,15 @@ can accept incoming network connections. Allow both.
    assuming independent loss. `r` is clamped to `[1, 1.5·k]`. For example,
    with `k = 25`, measured loss of 0%, 5%, 10%, 20% and 30% gives
    `r` = 4, 7, 10, 17 and 25.
-4. **Fixed FEC** always sends `--fixed-redundancy` parity chunks (default 5,
+4. **Bitrate budget.** Adaptive FEC keeps data + parity under `--max-kbps`
+   (default 6000 kbit/s). When a frame plus its parity would exceed it, the
+   frame is re-encoded at a lower JPEG quality, down to q25. When there is
+   room again, quality creeps back up. Without the cap, loss caused by
+   congestion feeds on itself: more loss leads to more parity, which leads to
+   more traffic and more loss. We saw exactly this on a phone hotspot, where
+   redundancy locked at its 150% ceiling with 79% loss. With the cap, extra
+   protection costs picture sharpness instead of bandwidth.
+5. **Fixed FEC** always sends `--fixed-redundancy` parity chunks (default 5,
    about 17% for this clip). It is wasteful on a clean link and overwhelmed
    by heavy loss. **No FEC** sends only the data chunks, so a single lost
    packet damages the frame.

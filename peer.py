@@ -54,6 +54,9 @@ def parse_args(argv=None):
     f.add_argument("--fec", choices=list(packet.FEC_MODES), default="adaptive")
     f.add_argument("--fixed-redundancy", type=int, default=5,
                    help="parity chunks per frame in --fec fixed")
+    f.add_argument("--max-kbps", type=float, default=6000,
+                   help="adaptive FEC bitrate cap (data + parity); extra parity is "
+                   "paid for with JPEG quality instead of bandwidth. 0 = no cap")
     f.add_argument("--chunk-size", type=int, default=fec.DEFAULT_CHUNK_SIZE)
     f.add_argument("--playout-ms", type=float, default=120.0,
                    help="how long to wait for late chunks before giving up on a frame")
@@ -135,7 +138,7 @@ class Peer:
         self.local_image = None
         self.local_jpeg = None
         self.tx = {"frames": 0, "packets": 0, "dropped_sim": 0, "k": None,
-                   "r": None, "bytes": 0}
+                   "r": None, "bytes": 0, "quality": None}
         self.clock_offset = 0.0          # peer clock - local clock
         self._rtt_samples = []
         self.rtt_ms = None
@@ -172,20 +175,35 @@ class Peer:
         next_t = time.time()
         frame_id = 0
         last_overhead = None
+        budget = adaptive.RateBudget(args.max_kbps, args.fps,
+                                     args.chunk_size + packet.HEADER_SIZE,
+                                     args.jpeg_quality)
         try:
             while not self.stop.is_set():
                 frame, src = source.read()
                 if frame is None:
                     continue
-                jpeg = codec.encode(frame, args.jpeg_quality)
-                size = fec.chunk_size_for(len(jpeg), args.chunk_size)
-                k = len(fec.split(jpeg, size))
-                if args.fec == "off":
-                    r = 0
-                elif args.fec == "fixed":
-                    r = args.fixed_redundancy
-                else:
-                    r = self.controller.redundancy(k)
+                quality = budget.quality if args.fec == "adaptive" else args.jpeg_quality
+                while True:
+                    jpeg = codec.encode(frame, int(quality))
+                    size = fec.chunk_size_for(len(jpeg), args.chunk_size)
+                    k = len(fec.split(jpeg, size))
+                    if args.fec == "off":
+                        r = 0
+                    elif args.fec == "fixed":
+                        r = args.fixed_redundancy
+                    else:
+                        r = self.controller.redundancy(k)
+                    # Adaptive FEC stays inside the bitrate budget: if data +
+                    # parity would exceed it, re-encode the frame smaller.
+                    if args.fec != "adaptive" or budget.fits(k, r) \
+                            or not budget.lower():
+                        break
+                    quality = budget.quality
+                if args.fec == "adaptive":
+                    if not budget.fits(k, r):           # at the quality floor
+                        r = max(1, budget.packets - k)
+                    budget.settle(k, r)
                 chunks = fec.encode(jpeg, r, size)
                 r = len(chunks) - k
                 now = time.time()
@@ -199,7 +217,7 @@ class Peer:
                 with self.lock:
                     self.local_image = frame
                     self.local_jpeg = jpeg
-                    self.tx.update(k=k, r=r)
+                    self.tx.update(k=k, r=r, quality=int(quality))
                     self.tx["frames"] += 1
                     self.tx["packets"] += len(chunks)
                     self.tx["bytes"] += len(chunks) * (size + packet.HEADER_SIZE)
@@ -209,7 +227,8 @@ class Peer:
                         and (last_overhead is None or abs(overhead - last_overhead) >= 5):
                     last_overhead = overhead
                     self.log(f"adaptive: peer reports {100 * self.controller.reported:.1f}% "
-                             f"loss -> r={r} parity for k={k} ({overhead:.0f}% overhead)")
+                             f"loss -> r={r} parity for k={k} ({overhead:.0f}% overhead, "
+                             f"JPEG q{int(quality)})")
                 frame_id += 1
                 next_t += interval
                 delay = next_t - time.time()
@@ -411,6 +430,10 @@ class Peer:
                 "peer_reported_loss_pct": None if c.reported is None
                 else round(100 * c.reported, 1),
                 "smoothed_loss_pct": round(100 * c.loss, 1),
+                "jpeg_quality": tx["quality"],
+                "kbps": round(8 * (tx["k"] + tx["r"]) * (self.args.chunk_size
+                              + packet.HEADER_SIZE) * self.args.fps / 1000)
+                if tx["k"] else None,
             },
             "rtt_ms": None if self.rtt_ms is None else round(self.rtt_ms, 1),
             "history": self.metrics.history_list(),
@@ -461,7 +484,8 @@ class Peer:
               f"recovered {s['recovery_pct']:.0f}%  "
               + (f"PSNR {s['psnr']:.1f} dB  SSIM {s['ssim']:.3f}  " if s["psnr"] else "")
               + (f"latency {s['latency_ms']:.0f} ms" if s["latency_ms"] else ""))
-        tx = f"tx[{self.args.fec}]: r={self.tx['r']}/k={self.tx['k']}"
+        tx = (f"tx[{self.args.fec}]: r={self.tx['r']}/k={self.tx['k']} "
+              f"q{self.tx['quality']}")
         if c.reported is not None:
             tx += f"  peer sees {100 * c.reported:.1f}% loss"
         return f"{rx}  |  {tx}"

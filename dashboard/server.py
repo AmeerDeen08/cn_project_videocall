@@ -11,7 +11,7 @@ import threading
 import time
 
 import cv2
-from flask import Flask, Response, abort, jsonify, send_from_directory
+from flask import Flask, Response, abort, jsonify, request, send_from_directory
 from flask_sock import Sock
 
 from .explain import MODE_NAMES, explain
@@ -19,6 +19,7 @@ from .explain import MODE_NAMES, explain
 HERE = os.path.dirname(os.path.abspath(__file__))
 RESULTS_DIR = os.path.join(os.path.dirname(HERE), "results")
 PUSH_INTERVAL = 0.3
+REMOTE_PREVIEW_FPS = 8
 
 
 def build_payload(peer):
@@ -48,10 +49,14 @@ def create_app(peer, results_dir=RESULTS_DIR):
             conn.send(json.dumps(build_payload(peer)))
             time.sleep(PUSH_INTERVAL)
 
-    def mjpeg(which):
+    def mjpeg(which, fps):
         boundary = b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
         last = None
+        sent = 0.0
         while not peer.stop.is_set():
+            if time.time() - sent < 1 / fps:
+                time.sleep(1 / 60)
+                continue
             with peer.lock:
                 image = getattr(peer, f"{which}_image")
                 jpeg = getattr(peer, f"{which}_jpeg")
@@ -60,17 +65,24 @@ def create_app(peer, results_dir=RESULTS_DIR):
                 if jpeg is None:             # damaged frames have no clean JPEG
                     jpeg = cv2.imencode(".jpg", image,
                                         [cv2.IMWRITE_JPEG_QUALITY, 80])[1].tobytes()
+                sent = time.time()
                 yield boundary + jpeg + b"\r\n"
-            time.sleep(1 / 30)
+            time.sleep(1 / 60)
+
+    def stream_fps():
+        # A viewer on another machine shares the network with the call
+        # itself, so give it a low-rate preview instead of competing with it.
+        local = request.remote_addr in ("127.0.0.1", "::1")
+        return 30 if local else REMOTE_PREVIEW_FPS
 
     @app.get("/video.mjpg")
     def video():
-        return Response(mjpeg("remote"),
+        return Response(mjpeg("remote", stream_fps()),
                         mimetype="multipart/x-mixed-replace; boundary=frame")
 
     @app.get("/local.mjpg")
     def local():
-        return Response(mjpeg("local"),
+        return Response(mjpeg("local", stream_fps()),
                         mimetype="multipart/x-mixed-replace; boundary=frame")
 
     @app.get("/results/<path:name>")

@@ -50,6 +50,38 @@ def recovery_probability(k, r, p):
     return sum(math.comb(n, i) * p ** i * q ** (n - i) for i in range(r + 1))
 
 
+class RateBudget:
+    """Keeps data + parity within a bitrate cap by trading JPEG quality.
+
+    Without a cap, loss caused by congestion is self-reinforcing: more loss
+    -> more parity -> more traffic -> more loss.  With it, extra protection
+    is paid for with picture quality instead of bandwidth, so the total
+    send rate stays (roughly) constant whatever the loss.
+    """
+
+    def __init__(self, max_kbps, fps, packet_bytes, q_max, q_min=25):
+        self.packets = max(4, int(max_kbps * 1000 / 8 / fps / packet_bytes)) \
+            if max_kbps > 0 else None
+        self.q_max = q_max
+        self.q_min = min(q_min, q_max)
+        self.quality = q_max
+
+    def fits(self, k, r):
+        return self.packets is None or k + r <= self.packets
+
+    def lower(self):
+        """Step quality down; False once at the floor."""
+        if self.quality <= self.q_min:
+            return False
+        self.quality = max(self.q_min, self.quality - 5)
+        return True
+
+    def settle(self, k, r):
+        """After a frame: creep quality back up while well under budget."""
+        if self.packets is not None and k + r < 0.85 * self.packets:
+            self.quality = min(self.q_max, self.quality + 1)
+
+
 class AdaptiveController:
     def __init__(self, target=0.995, margin=0.03, r_min=1, r_max_ratio=1.5,
                  alpha_up=0.6, alpha_down=0.15, initial_loss=0.05):

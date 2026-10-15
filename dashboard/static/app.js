@@ -122,6 +122,7 @@ function renderExplain(s) {
     : "—";
   $("#fact-out").textContent = isNum(tx.k)
     ? `${modeName(s.config.fec)} · r = ${tx.r} / k = ${tx.k}` +
+      (isNum(tx.kbps) ? ` · ${(tx.kbps / 1000).toFixed(1)} Mbit/s` : "") +
       (isNum(tx.peer_reported_loss_pct) ? ` · peer sees ${fmt(tx.peer_reported_loss_pct, 1)}% loss` : "")
     : "Not sending";
   $("#fact-peer").textContent = s.config.peer + (isNum(s.rtt_ms) ? ` · RTT ${fmt(s.rtt_ms, 1)} ms` : "");
