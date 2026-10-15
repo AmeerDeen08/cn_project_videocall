@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+venv/
+.venv/
+.DS_Store
+
+# runtime logs and per-run raw data
+logs/
+results/runs/
+
+# large captures; keep only the small generated sample clip
+*.mp4
+!samples/sample.mp4

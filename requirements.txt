@@ -1,0 +1,8 @@
+opencv-python>=4.8
+numpy>=1.24
+zfec>=1.5
+reedsolo>=1.7
+scikit-image>=0.21
+matplotlib>=3.7
+flask>=3.0
+flask-sock>=0.7

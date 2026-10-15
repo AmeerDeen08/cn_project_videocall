@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Unbreakable Call</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script>window.Chart || document.write('<script src="/static/vendor/chart.umd.min.js"><\/script>')</script>
+</head>
+<body>
+  <div class="page">
+    <header class="masthead">
+      <div>
+        <h1>Unbreakable call</h1>
+        <p class="subtitle">Live video over lossy UDP, protected by adaptive forward error correction</p>
+      </div>
+      <div class="masthead-side">
+        <span class="badge" id="mode-badge" data-mode="">—</span>
+        <span class="pill" id="link-pill"><span class="dot"></span><span id="link-text">Connecting…</span></span>
+      </div>
+    </header>
+
+    <nav class="segmented" role="tablist">
+      <button role="tab" data-view="live" aria-selected="true">Live</button>
+      <button role="tab" data-view="results" aria-selected="false">Results</button>
+    </nav>
+
+    <!-- ============================== LIVE ============================== -->
+    <main id="view-live">
+      <section class="hero">
+        <div class="card video-card">
+          <div class="card-head">
+            <h2>Received video</h2>
+            <div class="mini-seg" role="group" aria-label="Video feed">
+              <button data-feed="remote" aria-pressed="true">Peer</button>
+              <button data-feed="local" aria-pressed="false">You</button>
+            </div>
+          </div>
+          <div class="video-frame">
+            <img id="video" src="/video.mjpg" alt="Live video received from the peer">
+          </div>
+          <p class="caption" id="video-caption">Decoded by the Python receiver after FEC repair, streamed here as MJPEG.</p>
+        </div>
+
+        <div class="card explain-card" id="explain" data-level="idle">
+          <div class="status-row">
+            <span class="status-icon" id="status-icon" aria-hidden="true"></span>
+            <span class="status-label" id="status-label">Waiting</span>
+          </div>
+          <h2 class="explain-title" id="explain-title">Waiting for video</h2>
+          <p class="explain-body" id="explain-body">The dashboard will explain what the call is doing as soon as frames arrive.</p>
+          <div class="outcomes">
+            <div class="outcomes-head"><span>Frame outcomes</span><span class="muted">last 3 seconds</span></div>
+            <div class="outcome-bar" id="outcome-bar" role="img" aria-label="Frame outcomes"></div>
+            <ul class="outcome-legend" id="outcome-legend"></ul>
+          </div>
+          <div class="hairline"></div>
+          <dl class="facts">
+            <div><dt>Incoming stream</dt><dd id="fact-in">—</dd></div>
+            <div><dt>Your outgoing stream</dt><dd id="fact-out">—</dd></div>
+            <div><dt>Peer</dt><dd id="fact-peer">—</dd></div>
+          </dl>
+        </div>
+      </section>
+
+      <section class="metrics" id="metrics">
+        <!-- filled by app.js -->
+      </section>
+
+      <section class="charts">
+        <div class="card chart-card">
+          <div class="card-head">
+            <div>
+              <h2>Loss and redundancy</h2>
+              <p class="card-sub">When loss rises, adaptive FEC adds parity to stay ahead of it.</p>
+            </div>
+            <div class="legend">
+              <span><i class="swatch" style="--c: var(--series-2)"></i>Packet loss</span>
+              <span><i class="swatch" style="--c: var(--series-1)"></i>Redundancy (r / k)</span>
+            </div>
+          </div>
+          <div class="chart-box"><canvas id="chart-loss"></canvas></div>
+        </div>
+        <div class="card chart-card">
+          <div class="card-head">
+            <div>
+              <h2>Picture quality</h2>
+              <p class="card-sub">PSNR of what you see versus the original frame. Above 35 dB looks clean.</p>
+            </div>
+          </div>
+          <div class="chart-box"><canvas id="chart-psnr"></canvas></div>
+        </div>
+      </section>
+
+      <section class="card legend-card">
+        <h2>Reading this screen</h2>
+        <dl class="glossary">
+          <div><dt>No FEC</dt><dd>Plain packets. Any lost packet damages its frame.</dd></div>
+          <div><dt>Fixed FEC</dt><dd>A constant number of parity packets on every frame.</dd></div>
+          <div><dt>Adaptive FEC</dt><dd>Parity follows the loss the receiver measures, plus a safety margin.</dd></div>
+          <div><dt>k and r</dt><dd>A frame is split into k data packets; r parity packets are added. Any k of the k + r rebuild it.</dd></div>
+        </dl>
+      </section>
+    </main>
+
+    <!-- ============================= RESULTS ============================ -->
+    <main id="view-results" hidden>
+      <div class="card empty" id="results-empty">
+        <h2>No study results yet</h2>
+        <p>Run <code>python evaluate.py</code> to sweep loss from 0 to 30% across all three modes. The charts and table appear here when it finishes.</p>
+      </div>
+      <div id="results-body" hidden>
+        <section class="results-intro card">
+          <h2>Loss-versus-quality study</h2>
+          <p class="card-sub" id="results-meta"></p>
+          <div class="headline-grid" id="results-headlines"></div>
+        </section>
+        <section class="charts charts-3">
+          <div class="card chart-card">
+            <div class="card-head"><div><h2>Picture quality vs loss</h2><p class="card-sub">Mean PSNR of the frames the viewer sees.</p></div></div>
+            <div class="chart-box"><canvas id="res-psnr"></canvas></div>
+          </div>
+          <div class="card chart-card">
+            <div class="card-head"><div><h2>Frames recovered vs loss</h2><p class="card-sub">Share of frames shown fully intact.</p></div></div>
+            <div class="chart-box"><canvas id="res-recovery"></canvas></div>
+          </div>
+          <div class="card chart-card">
+            <div class="card-head"><div><h2>FEC overhead vs loss</h2><p class="card-sub">Extra bandwidth spent on parity.</p></div></div>
+            <div class="chart-box"><canvas id="res-overhead"></canvas></div>
+          </div>
+        </section>
+        <div class="legend legend-center" id="results-legend">
+          <span><i class="swatch" style="--c: var(--series-3)"></i>No FEC</span>
+          <span><i class="swatch" style="--c: var(--series-2)"></i>Fixed FEC</span>
+          <span><i class="swatch" style="--c: var(--series-1)"></i>Adaptive FEC</span>
+        </div>
+        <section class="card trace-card" id="trace-card" hidden>
+          <div class="card-head"><div><h2>Adaptation over time</h2><p class="card-sub">Loss stepped 0 → 10 → 20 → 30 → 5% with tc netem. Redundancy follows within about half a second, then backs off slowly once loss falls.</p></div></div>
+          <img id="trace-img" alt="Adaptive FEC redundancy following a stepped loss rate, with frame recovery below">
+        </section>
+        <section class="card table-card">
+          <div class="card-head"><div><h2>Three-mode comparison</h2><p class="card-sub">One row per loss level. Best value in each group is emphasised.</p></div></div>
+          <div class="table-scroll"><table id="results-table"></table></div>
+          <p class="caption" id="results-files"></p>
+        </section>
+      </div>
+    </main>
+
+    <footer class="foot">Custom UDP media pipeline · systematic Reed–Solomon erasure coding (zfec) · no machine learning</footer>
+  </div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
